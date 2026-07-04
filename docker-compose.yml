@@ -1,0 +1,22 @@
+services:
+  tmd:
+    build:
+      context: .
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    image: tmd:latest
+    container_name: tmd
+    volumes:
+      - tmd_config:/home/tmd/.tmd2     # 配置 / sqlite数据库 / 日志 / 失败推文dump
+      - ./downloads:/downloads         # 媒体下载输出目录（宿主机 ./downloads）
+    environment:
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+    # 首次运行 --conf 需要交互式输入，之后日常调用可去掉这两行
+    stdin_open: true
+    tty: true
+    command: ["--help"]
+
+volumes:
+  tmd_config:

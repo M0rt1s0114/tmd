@@ -1,0 +1,13 @@
+.git
+.github
+.vscode
+doc
+bin
+*.exe
+*.prof
+todo.md
+readme.md
+LICENSE
+Dockerfile
+.dockerignore
+docker-compose.yml

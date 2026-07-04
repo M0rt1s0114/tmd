@@ -44,11 +44,16 @@ type userArgs struct {
 	screenName []string
 }
 
-func (u *userArgs) GetUser(ctx context.Context, client *resty.Client) ([]*twitter.User, error) {
+func (u *userArgs) GetUser(ctx context.Context, client *resty.Client, skipInvalid bool) ([]*twitter.User, error) {
 	users := []*twitter.User{}
 	for _, id := range u.id {
 		usr, err := twitter.GetUserById(ctx, client, id)
 		if err != nil {
+			// 手动取消(Ctrl+C)时不应继续尝试后续请求
+			if skipInvalid && ctx.Err() == nil {
+				log.Warnf("skip invalid user_id [%d]: %v", id, err)
+				continue
+			}
 			return nil, err
 		}
 		users = append(users, usr)
@@ -57,6 +62,10 @@ func (u *userArgs) GetUser(ctx context.Context, client *resty.Client) ([]*twitte
 	for _, screenName := range u.screenName {
 		usr, err := twitter.GetUserByScreenName(ctx, client, screenName)
 		if err != nil {
+			if skipInvalid && ctx.Err() == nil {
+				log.Warnf("skip invalid screen_name [%s]: %v", screenName, err)
+				continue
+			}
 			return nil, err
 		}
 		users = append(users, usr)
@@ -109,11 +118,15 @@ type ListArgs struct {
 	intArgs
 }
 
-func (l ListArgs) GetList(ctx context.Context, client *resty.Client) ([]*twitter.List, error) {
+func (l ListArgs) GetList(ctx context.Context, client *resty.Client, skipInvalid bool) ([]*twitter.List, error) {
 	lists := []*twitter.List{}
 	for _, id := range l.id {
 		list, err := twitter.GetLst(ctx, client, id)
 		if err != nil {
+			if skipInvalid && ctx.Err() == nil {
+				log.Warnf("skip invalid list_id [%d]: %v", id, err)
+				continue
+			}
 			return nil, err
 		}
 		lists = append(lists, list)
@@ -141,18 +154,18 @@ func printTask(task *Task) {
 	}
 }
 
-func MakeTask(ctx context.Context, client *resty.Client, usrArgs userArgs, listArgs ListArgs, follArgs userArgs) (*Task, error) {
+func MakeTask(ctx context.Context, client *resty.Client, usrArgs userArgs, listArgs ListArgs, follArgs userArgs, skipInvalid bool) (*Task, error) {
 	task := Task{}
 	task.users = make([]*twitter.User, 0)
 	task.lists = make([]twitter.ListBase, 0)
 
-	users, err := usrArgs.GetUser(ctx, client)
+	users, err := usrArgs.GetUser(ctx, client, skipInvalid)
 	if err != nil {
 		return nil, err
 	}
 	task.users = append(task.users, users...)
 
-	lists, err := listArgs.GetList(ctx, client)
+	lists, err := listArgs.GetList(ctx, client, skipInvalid)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +174,7 @@ func MakeTask(ctx context.Context, client *resty.Client, usrArgs userArgs, listA
 	}
 
 	// fo
-	users, err = follArgs.GetUser(ctx, client)
+	users, err = follArgs.GetUser(ctx, client, skipInvalid)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +243,7 @@ func main() {
 	var dbg bool
 	var autoFollow bool
 	var noRetry bool
+	var skipInvalid bool
 
 	flag.BoolVar(&confArg, "conf", false, "reconfigure")
 	flag.Var(&usrArgs, "user", "download tweets from the user specified by user_id/screen_name since the last download")
@@ -238,6 +252,7 @@ func main() {
 	flag.BoolVar(&dbg, "dbg", false, "display debug message")
 	flag.BoolVar(&autoFollow, "auto-follow", false, "send follow request automatically to protected users")
 	flag.BoolVar(&noRetry, "no-retry", false, "quickly exit without retrying failed tweets")
+	flag.BoolVar(&skipInvalid, "skip-invalid", false, "skip invalid/unresolvable user_id, screen_name or list_id instead of aborting the whole batch")
 	flag.Parse()
 
 	var err error
@@ -344,7 +359,7 @@ func main() {
 	log.Infoln("loaded previous failed tweets:", dumper.Count())
 
 	// collect tasks
-	task, err := MakeTask(ctx, client, usrArgs, listArgs, follArgs)
+	task, err := MakeTask(ctx, client, usrArgs, listArgs, follArgs, skipInvalid)
 	if err != nil {
 		log.Fatalln("failed to parse cmd args:", err)
 	}
